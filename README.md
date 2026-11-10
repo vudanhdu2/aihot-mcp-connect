@@ -76,19 +76,23 @@ Nếu muốn tự động điền cấu hình cho cả 4 công cụ (kèm tự �
 ### 1. Xem báo cáo kiểm toán bảo mật (kèm SHA-256) hoặc chạy thử (`--dry-run`)
 
 - **File thực thi duy nhất**: [`bin/aihot-mcp.mjs`](bin/aihot-mcp.mjs)
+- **Chính sách bảo mật & Lệnh kiểm chứng SHA-256 độc lập**: [`SECURITY.md`](SECURITY.md)
 - **Mã băm toàn vẹn (SHA-256 v1.1.0)**: `8d37e381a7ed810bc7fc9ae27031b2407555386354a49a93639b1add75de10d2`
 
 ```bash
-npx github:vudanhdu2/aihot-mcp-connect --audit
-npx github:vudanhdu2/aihot-mcp-connect setup --key sk-MÃ_TOKEN_CỦA_BẠN --dry-run
+# Kiểm chứng SHA-256 độc lập bằng lệnh hệ điều hành trước khi chạy:
+curl -fsSL https://raw.githubusercontent.com/vudanhdu2/aihot-mcp-connect/v1.1.0/bin/aihot-mcp.mjs | shasum -a 256
+
+# Chạy kiểm toán hoặc xem trước (--dry-run) với phiên bản đã ghim #v1.1.0:
+npx github:vudanhdu2/aihot-mcp-connect#v1.1.0 --audit
+npx github:vudanhdu2/aihot-mcp-connect#v1.1.0 setup --key sk-MÃ_TOKEN_CỦA_BẠN --dry-run
 ```
 
 ### 2. Tự động cấu hình MCP cho Antigravity, Claude Code, Cursor & Codex (Quyền file `0600` + Backup `*.aihot.bak`)
 
 ```bash
-npx github:vudanhdu2/aihot-mcp-connect setup --key sk-MÃ_TOKEN_CỦA_BẠN
-# Hoặc truyền qua biến môi trường để không lưu key trong lịch sử lệnh (Shell History):
-AIHOT_KEY=sk-MÃ_TOKEN_CỦA_BẠN npx github:vudanhdu2/aihot-mcp-connect setup
+# Truyền qua biến môi trường để không lưu key trong lịch sử lệnh (Shell History):
+AIHOT_KEY=sk-MÃ_TOKEN_CỦA_BẠN npx github:vudanhdu2/aihot-mcp-connect#v1.1.0 setup
 ```
 
 ### 3. Đổi nhanh tài khoản AI theo yêu cầu (On-Demand Switch, không chạy ngầm)
@@ -96,13 +100,13 @@ AIHOT_KEY=sk-MÃ_TOKEN_CỦA_BẠN npx github:vudanhdu2/aihot-mcp-connect setup
 Sau khi đã có `mcp_config.json`, CLI tự động đọc mã Token từ cấu hình cục bộ nên bạn **không cần truyền lại `--key` trên dòng lệnh**:
 
 ```bash
-npx github:vudanhdu2/aihot-mcp-connect switch --account <account_id>
+npx github:vudanhdu2/aihot-mcp-connect#v1.1.0 switch --account <account_id>
 ```
 
 ### 4. Gỡ bỏ hoàn toàn cấu hình MCP bất cứ lúc nào (`uninstall`)
 
 ```bash
-npx github:vudanhdu2/aihot-mcp-connect uninstall
+npx github:vudanhdu2/aihot-mcp-connect#v1.1.0 uninstall
 ```
 
 ---
