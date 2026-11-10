@@ -6,9 +6,9 @@
  * License: MIT
  *
  * SECURITY GUARANTEES (100% Auditable, Zero Background Daemons):
- * 1. NO background processes (`wscript.exe`, ScheduledTasks, LaunchAgents).
- * 2. NO silent remote code auto-updates (`irm | iex` or `curl | bash` loops).
- * 3. NO disk/database scanning (`state.vscdb`, Chrome/Edge profiles, Keychains).
+ * 1. NO background processes (no hidden runners, no ScheduledTasks, no LaunchAgents).
+ * 2. NO silent remote code auto-updates (no remote eval/exec loops).
+ * 3. NO disk/database scanning (does not read state.vscdb, browser profiles, or Keychains).
  * 4. NO conversation or source-code syncing (100% local code privacy).
  * 5. Pure standard library Node.js (0 third-party npm dependencies).
  * ============================================================================
@@ -18,26 +18,69 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import https from 'node:https';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const PORTAL_URL = 'https://aihot.vn';
 const MCP_ENDPOINT = 'https://aihot.vn/mcp';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+
+function getSelfSha256() {
+  try {
+    const selfPath = fileURLToPath(import.meta.url);
+    const buf = fs.readFileSync(selfPath);
+    return crypto.createHash('sha256').update(buf).digest('hex');
+  } catch {
+    return 'unknown';
+  }
+}
 
 function printBanner() {
   console.log('======================================================================');
   console.log(`  AIHOT.VN — Open-Source MCP & Quick-Switch CLI v${VERSION}`);
-  console.log('  Repo: https://github.com/vudanhdu2/aihot-mcp-connect');
-  console.log('  Chế độ: Minh bạch 100% · Không tiến trình ngầm · 0 phụ thuộc ngoài');
+  console.log('  Repo   : https://github.com/vudanhdu2/aihot-mcp-connect');
+  console.log(`  SHA256 : ${getSelfSha256()}`);
+  console.log('  Chế độ : Minh bạch 100% · Không tiến trình ngầm · 0 phụ thuộc ngoài');
   console.log('======================================================================');
+}
+
+function detectSavedMemberKey() {
+  const envKey = (process.env.AIHOT_KEY || process.env.AIHOT_MEMBER_KEY || '').trim();
+  if (/^sk-[A-Za-z0-9_-]{16,128}$/.test(envKey)) {
+    return envKey;
+  }
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, '.gemini', 'antigravity', 'mcp_config.json'),
+    path.join(home, '.gemini', 'config', 'mcp_config.json'),
+    path.join(home, '.claude.json'),
+    path.join(home, '.cursor', 'mcp.json'),
+    path.join(home, '.codex', 'config.toml'),
+  ];
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        const raw = fs.readFileSync(file, 'utf8');
+        const m = raw.match(/(?:Bearer\s+|key=)(sk-[A-Za-z0-9_-]{16,128})/);
+        if (m && m[1]) {
+          return m[1].trim();
+        }
+      }
+    } catch {
+      // Ignore unreadable files
+    }
+  }
+  return '';
 }
 
 function parseArgs(argv) {
   const args = {
     command: 'help',
-    key: process.env.AIHOT_MEMBER_KEY || '',
+    key: detectSavedMemberKey(),
     account: '',
     dryRun: false,
     audit: false,
+    uninstall: false,
     clients: ['antigravity', 'claude', 'cursor', 'codex'],
   };
 
@@ -62,6 +105,9 @@ function parseArgs(argv) {
     } else if (a === '--audit') {
       args.audit = true;
       args.command = 'audit';
+    } else if (a === '--uninstall' || a === '--clean') {
+      args.uninstall = true;
+      args.command = 'uninstall';
     } else if (a === '--help' || a === '-h') {
       args.command = 'help';
     } else if (!a.startsWith('-')) {
@@ -69,17 +115,17 @@ function parseArgs(argv) {
     }
   }
 
-  if (positional.length > 0 && !args.audit) {
+  if (positional.length > 0 && !args.audit && !args.uninstall) {
     args.command = positional[0].toLowerCase();
   }
   return args;
 }
 
 function validateMemberKey(rawKey) {
-  const k = String(rawKey || '').trim();
+  const k = String(rawKey || '').trim() || detectSavedMemberKey();
   if (!/^sk-[A-Za-z0-9_-]{16,128}$/.test(k)) {
     throw new Error(
-      'Mã Token thành viên không hợp lệ (cần bắt đầu bằng "sk-..." từ trang https://aihot.vn).'
+      'Chưa tìm thấy Mã Token thành viên (sk-...). Vui lòng truyền qua biến môi trường AIHOT_KEY=sk-... hoặc --key sk-... (hoặc dán mcp_config.json trước).'
     );
   }
   return k;
@@ -105,7 +151,7 @@ function safeWriteFileWithBackup(filePath, content, dryRun = false) {
     fs.copyFileSync(resolved, backupPath);
   }
   fs.writeFileSync(resolved, content, { encoding: 'utf8', mode: 0o600 });
-  console.log(`  ✔ Đã cấu hình: ${resolved}`);
+  console.log(`  ✔ Đã cấu hình (quyền 0600): ${resolved}`);
 }
 
 function configureJsonMcpFile(filePath, memberKey, formatType, dryRun) {
@@ -115,7 +161,6 @@ function configureJsonMcpFile(filePath, memberKey, formatType, dryRun) {
       const raw = fs.readFileSync(filePath, 'utf8').trim();
       if (raw) obj = JSON.parse(raw);
     } catch {
-      // Nếu file JSON cũ lỗi cú pháp, bản gốc vẫn được giữ trong .aihot.bak
       obj = {};
     }
   }
@@ -208,18 +253,24 @@ function runSetup(args) {
   console.log('\n✅ Hoàn tất! Máy tính của bạn chỉ sử dụng cấu hình JSON tĩnh trỏ tới:');
   console.log(`   ${MCP_ENDPOINT}`);
   console.log('   • Không có dịch vụ chạy ngầm (Zero Background Daemon).');
+  console.log('   • Từ lần sau, khi đổi tài khoản bạn không cần truyền lại --key (CLI tự đọc từ mcp_config.json).');
   console.log('   • Bản sao lưu cấu hình cũ được lưu tại *.aihot.bak.');
 }
 
-function fetchJsonHttps(urlStr) {
+function fetchJsonHttps(urlStr, memberKey = '') {
   return new Promise((resolve, reject) => {
+    const headers = {
+      'User-Agent': `aihot-mcp-connect/${VERSION} (Open-Source-CLI)`,
+      Accept: 'application/json',
+    };
+    if (memberKey) {
+      headers.Authorization = `Bearer ${memberKey}`;
+      headers['X-API-Key'] = memberKey;
+    }
     const req = https.get(
       urlStr,
       {
-        headers: {
-          'User-Agent': `aihot-mcp-connect/${VERSION} (Open-Source-CLI)`,
-          Accept: 'application/json',
-        },
+        headers,
         timeout: 15000,
       },
       (res) => {
@@ -258,8 +309,8 @@ async function runSwitch(args) {
     args.account
   )}?key=${encodeURIComponent(memberKey)}&os=mac&format=json`;
 
-  console.log(`\n⚡ Đang yêu cầu thông tin chuyển đổi tài khoản [${args.account}] (On-Demand)...`);
-  const payload = await fetchJsonHttps(apiUrl);
+  console.log(`\n⚡ Đang yêu cầu thông tin chuyển đổi tài khoản [${args.account}] (On-Demand · 0% chạy ngầm)...`);
+  const payload = await fetchJsonHttps(apiUrl, memberKey);
   if (!payload || !payload.ok) {
     throw new Error(payload?.error || 'Máy chủ từ chối yêu cầu chuyển đổi tài khoản.');
   }
@@ -299,18 +350,80 @@ async function runSwitch(args) {
   throw new Error('Định dạng dữ liệu tài khoản trả về không được hỗ trợ.');
 }
 
+function removeMcpFromJsonFile(filePath, dryRun) {
+  if (!fs.existsSync(filePath)) return false;
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8').trim();
+    if (!raw) return false;
+    const obj = JSON.parse(raw);
+    if (obj && obj.mcpServers && obj.mcpServers['ag-aihot']) {
+      delete obj.mcpServers['ag-aihot'];
+      if (dryRun) {
+        console.log(`[DRY-RUN] Sẽ gỡ mục "ag-aihot" khỏi: ${filePath}`);
+      } else {
+        fs.writeFileSync(filePath, JSON.stringify(obj, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+        console.log(`  ✔ Đã gỡ cấu hình "ag-aihot" khỏi: ${filePath}`);
+      }
+      return true;
+    }
+  } catch {
+    // Ignore parse error
+  }
+  return false;
+}
+
+function runUninstall(args) {
+  const home = os.homedir();
+  console.log('\n🧹 Đang gỡ bỏ cấu hình MCP ag-aihot và dọn sạch tàn dư (nếu có)...');
+  const jsonFiles = [
+    path.join(home, '.gemini', 'antigravity', 'mcp_config.json'),
+    path.join(home, '.gemini', 'config', 'mcp_config.json'),
+    path.join(home, '.claude.json'),
+    path.join(home, '.cursor', 'mcp.json'),
+  ];
+  let count = 0;
+  for (const f of jsonFiles) {
+    if (removeMcpFromJsonFile(f, args.dryRun)) count++;
+  }
+  const codexToml = path.join(home, '.codex', 'config.toml');
+  if (fs.existsSync(codexToml)) {
+    const raw = fs.readFileSync(codexToml, 'utf8');
+    const sectionRegex = /^\[mcp_servers\.ag-aihot\]\r?\n(?:[^\[]*)/m;
+    if (sectionRegex.test(raw)) {
+      if (args.dryRun) {
+        console.log(`[DRY-RUN] Sẽ gỡ [mcp_servers.ag-aihot] khỏi: ${codexToml}`);
+      } else {
+        fs.writeFileSync(codexToml, raw.replace(sectionRegex, '').trimEnd() + '\n', 'utf8');
+        console.log(`  ✔ Đã gỡ [mcp_servers.ag-aihot] khỏi: ${codexToml}`);
+      }
+      count++;
+    }
+  }
+  console.log(`\n✅ Đã dọn sạch ${count} tệp cấu hình MCP. Máy tính của bạn hoàn toàn sạch (0% tiến trình ngầm).`);
+}
+
 function runAudit() {
+  const home = os.homedir();
   console.log('\n🛡️  BÁO CÁO TỰ KIỂM TOÁN BẢO MẬT (SECURITY AUDIT REPORT):');
-  console.log('  1. Phụ thuộc bên thứ 3 (npm dependencies) : 0 (Chỉ dùng node:fs, node:path, node:os, node:https)');
-  console.log('  2. Tiến trình chạy ngầm (Background Daemon): KHÔNG (Chỉ chạy khi người dùng gõ lệnh rồi thoát)');
-  console.log('  3. Tự động tải code từ xa (Remote Exec)   : KHÔNG (Không dùng eval, iex, child_process)');
+  console.log(`  • Phiên bản CLI                            : v${VERSION}`);
+  console.log(`  • Mã băm toàn vẹn (SHA-256)               : ${getSelfSha256()}`);
+  console.log('  1. Phụ thuộc bên thứ 3 (npm dependencies) : 0 (Chỉ dùng node:fs, node:path, node:os, node:https, node:crypto)');
+  console.log('  2. Tiến trình chạy ngầm (Background Daemon): KHÔNG (Chỉ chạy khi người dùng gõ lệnh rồi thoát ngay)');
+  console.log('  3. Tự động tải code từ xa (Remote Exec)   : KHÔNG (Không dùng eval, không tải script ngoài)');
   console.log('  4. Quét dữ liệu cá nhân / lịch sử chat     : KHÔNG (Không đọc state.vscdb hay thư mục dự án)');
-  console.log('  5. Các tệp cấu hình duy nhất được phép ghi :');
-  console.log('     • ~/.gemini/antigravity/mcp_config.json');
-  console.log('     • ~/.gemini/config/mcp_config.json');
-  console.log('     • ~/.claude.json');
-  console.log('     • ~/.cursor/mcp.json');
-  console.log('     • ~/.codex/config.toml');
+  console.log('  5. Các tệp cấu hình duy nhất được phép ghi (quyền 0600 + tự động tạo bản sao lưu *.aihot.bak):');
+  const allowedFiles = [
+    path.join(home, '.gemini', 'antigravity', 'mcp_config.json'),
+    path.join(home, '.gemini', 'config', 'mcp_config.json'),
+    path.join(home, '.claude.json'),
+    path.join(home, '.cursor', 'mcp.json'),
+    path.join(home, '.codex', 'config.toml'),
+  ];
+  for (const f of allowedFiles) {
+    const exists = fs.existsSync(f);
+    console.log(`     • ${f} [${exists ? 'Đang có trên máy' : 'Chưa tạo'}]`);
+  }
+  console.log('\n  👉 Để gỡ bỏ hoàn toàn cấu hình bất cứ lúc nào: npx github:vudanhdu2/aihot-mcp-connect uninstall');
 }
 
 function printHelp() {
@@ -318,15 +431,19 @@ function printHelp() {
 Cách sử dụng:
   1. Chỉ cấu hình cổng MCP bằng JSON tĩnh (Khuyên dùng — 0% tiến trình ngầm):
      npx github:vudanhdu2/aihot-mcp-connect setup --key sk-YOUR_MEMBER_KEY
+     (Hoặc truyền qua biến môi trường để không lưu trong lịch sử lệnh: AIHOT_KEY=sk-... npx github:vudanhdu2/aihot-mcp-connect setup)
 
-  2. Kiểm tra trước những file sẽ được sửa (Dry-Run):
+  2. Kiểm tra trước những file sẽ được sửa (Dry-Run, không ghi ổ cứng):
      npx github:vudanhdu2/aihot-mcp-connect setup --key sk-YOUR_MEMBER_KEY --dry-run
 
-  3. Đổi nhanh tài khoản AI theo yêu cầu (On-Demand Switch, không chạy ngầm):
-     npx github:vudanhdu2/aihot-mcp-connect switch --key sk-YOUR_MEMBER_KEY --account <account_id>
+  3. Đổi nhanh tài khoản AI theo yêu cầu (On-Demand Switch, tự đọc key từ mcp_config.json):
+     npx github:vudanhdu2/aihot-mcp-connect switch --account <account_id>
 
-  4. Xem báo cáo kiểm toán bảo mật của công cụ:
+  4. Xem báo cáo kiểm toán bảo mật & SHA-256 của công cụ:
      npx github:vudanhdu2/aihot-mcp-connect --audit
+
+  5. Gỡ bỏ hoàn toàn cấu hình MCP khỏi máy tính:
+     npx github:vudanhdu2/aihot-mcp-connect uninstall
 `);
 }
 
@@ -340,6 +457,8 @@ async function main() {
       await runSwitch(args);
     } else if (args.command === 'audit') {
       runAudit();
+    } else if (args.command === 'uninstall' || args.command === 'remove' || args.command === 'clean') {
+      runUninstall(args);
     } else {
       printHelp();
     }

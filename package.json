@@ -1,6 +1,6 @@
 {
   "name": "aihot-mcp-connect",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Official Open-Source, Zero-Daemon MCP Configurator & On-Demand Account Switcher for AIHOT.VN (Antigravity, Claude Code, Cursor, ChatGPT Codex)",
   "type": "module",
   "bin": {
