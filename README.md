@@ -34,6 +34,24 @@ Kho mã nguồn mở chính thức giúp các thành viên **Câu Lạc Bộ Ngh
 
 ---
 
+## 🛡️ Cơ Chế 3 Lớp: Admin & Hệ Thống KHÔNG Đọc Được Hội Thoại Làm Việc
+
+Ngay cả với quyền **Admin**, hệ thống của [https://aihot.vn](https://aihot.vn) **không có chức năng và không lưu trữ** nội dung câu lệnh (prompt), phản hồi AI hay mã nguồn của thành viên. Toàn bộ quy trình được khóa cứng ở **3 lớp kỹ thuật**:
+
+1. **Lớp 1 · Máy trạm (Client Sync — `tokens_only`)**: Khi đồng bộ thống kê lên `/api/member/sync-ide-usage`, client chỉ gửi bộ đếm định lượng (`conv_id`, `step_idx`, tên model, `timestamp`, số lượng token input/cache/output/reasoning) — **0 ký tự nội dung chat**.
+2. **Lớp 2 · Máy chủ API (`sync_conversations_enabled = false`)**: Endpoint máy chủ khóa cứng cờ tắt đồng bộ hội thoại và tự động gọi `purge_member_remote_conversations` để xóa sạch mọi tệp hội thoại cũ nếu phát sinh.
+3. **Lớp 3 · Gateway `ProxyMonitor`**: Khi thành viên gọi API qua Gateway chung, bộ giám sát tự động xóa trắng (`None`) toàn bộ `request_body`, `upstream_request_body`, `response_body`, `request_headers` và `upstream_request_headers` trước khi ghi log.
+
+| Phạm vi dữ liệu | Tuyệt đối KHÔNG ai xem được (kể cả Admin) | Admin chỉ xem được gì để vận hành Pool? |
+| :--- | :--- | :--- |
+| **Nội dung làm việc** | Prompt bạn gõ, suy nghĩ/câu trả lời AI, mã nguồn dự án, nội dung tệp cục bộ | Không có (0 byte nội dung được lưu) |
+| **Lưu lượng qua Gateway** | Nội dung `request_body`, `response_body`, `headers` của thành viên | Chỉ số kỹ thuật: số bước, model, lượng token, trạng thái lỗi HTTP |
+| **Bảng xếp hạng & Kiểm toán** | Chi tiết hội thoại theo từng tin nhắn | Danh tính thành viên, trạng thái đang chạy/TPM, tổng số prompt/hội thoại/bước AI, lượng token & chi phí USD theo model, tài khoản Pool đang gắn |
+
+Xem thêm công bố chính thức tại [Điều 4 Bảo mật trên AIHOT.VN](https://aihot.vn/dieu-khoan.html#dieu-4) và chi tiết chính sách kiểm chứng trong [`SECURITY.md`](SECURITY.md#4-giới-hạn-quyền-admin--bảo-vệ-hội-thoại-3-lớp-zero-data-leak-server-policy).
+
+---
+
 ## 🚀 Cách 1 (Khuyên dùng cho 90% thành viên): Kết nối MCP bằng JSON Thuần Túy (0% Code Thực Thi)
 
 Thực chất, cổng MCP của [https://aihot.vn](https://aihot.vn) là **Remote HTTP MCP** (`https://aihot.vn/mcp`). Bạn **không cần cài đặt bất kỳ phần mềm hay chạy script nào**, chỉ cần dán cấu hình JSON tĩnh vào IDE của mình:

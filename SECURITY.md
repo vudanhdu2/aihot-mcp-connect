@@ -74,14 +74,30 @@ rm -f ~/.gemini/ag-client-bridge.* ~/Library/LaunchAgents/vn.aihot.bridge.plist
 
 ---
 
-## 4. Lưu Ý Về Điều Khoản Dịch Vụ Bên Thứ Ba (ToS Disclosure)
+## 4. Giới Hạn Quyền Admin & Bảo Vệ Hội Thoại 3 Lớp (Zero-Data-Leak Server Policy)
+
+Để thành viên yên tâm tuyệt đối khi sử dụng hạ tầng dùng chung, cả **hệ thống máy chủ lẫn tài khoản Admin** trên [https://aihot.vn](https://aihot.vn) đều **không thể đọc được nội dung hội thoại, prompt hay mã nguồn** của bất kỳ thành viên nào:
+
+1. **Lớp 1 · Máy trạm (Client Sync — `tokens_only`)**: Các script đồng bộ thống kê chỉ truyền bộ đếm định lượng (`conv_id`, `step_idx`, model, `timestamp` và số token) về `/api/member/sync-ide-usage`, không đính kèm văn bản prompt hay câu trả lời AI.
+2. **Lớp 2 · Máy chủ API (`sync_conversations_enabled = false`)**: Backend khóa cứng trạng thái tắt đồng bộ hội thoại (`tokens_only`) và tự động xóa sạch mọi tệp hội thoại cũ nếu có (`purge_member_remote_conversations`).
+3. **Lớp 3 · Gateway `ProxyMonitor`**: Khi lưu nhật ký qua Gateway dùng chung, máy chủ tự động xóa trắng (`None`) toàn bộ `request_body`, `upstream_request_body`, `response_body`, `request_headers` và `upstream_request_headers` cho mọi thành viên.
+
+### Đối chiếu quyền truy cập dữ liệu của Admin
+- **Không thể xem (kể cả Admin)**: Nội dung prompt, phản hồi/suy nghĩ AI, mã nguồn, nội dung file trên máy cá nhân và payload request/response qua Gateway.
+- **Chỉ xem được chỉ số định lượng (để điều phối Pool & chống gian lận)**: Danh tính thành viên, trạng thái đang đốt token / tốc độ TPM, số lượng prompt (trực tiếp / ngầm), số hội thoại (trực tiếp / ngầm), số bước AI, thống kê token/chi phí USD theo model và tài khoản Pool đang gắn.
+
+Tham chiếu công khai trên cổng web: [Điều 4 — Cam Kết Bảo Mật & Giới Hạn Quyền Admin](https://aihot.vn/dieu-khoan.html#dieu-4) · [Bảng Xếp Hạng 16 Phòng 3D](https://aihot.vn/virtual-office/index.html).
+
+---
+
+## 5. Lưu Ý Về Điều Khoản Dịch Vụ Bên Thứ Ba (ToS Disclosure)
 
 - **Cổng Remote HTTP MCP (`https://aihot.vn/mcp`)**: Kết nối qua giao thức HTTP chuẩn của Model Context Protocol để tra cứu thư viện bài viết AI, chợ Skill và điều phối mô hình hợp lệ.
 - **Tính năng Đổi Nhanh Tài Khoản (`switch`)**: Ghi tệp xác thực OAuth vào thư mục cấu hình cục bộ (`~/.gemini/` hoặc `~/.codex/`) dành cho thành viên trong nhóm nghiên cứu nội bộ CLB. Người dùng lưu ý việc sử dụng chung hoặc xoay vòng tài khoản giữa nhiều thiết bị cần tuân thủ quy tắc hạn mức công bằng (Fair-Use) của CLB và có thể chịu giới hạn theo Điều khoản dịch vụ (ToS) của nhà cung cấp IDE/mô hình gốc.
 
 ---
 
-## 5. Báo Cáo Lỗ Hổng Bảo Mật (Vulnerability Disclosure)
+## 6. Báo Cáo Lỗ Hổng Bảo Mật (Vulnerability Disclosure)
 
 Mọi phát hiện hoặc góp ý về an toàn thông tin xin gửi trực tiếp qua:
 - **GitHub Issues**: [https://github.com/vudanhdu2/aihot-mcp-connect/issues](https://github.com/vudanhdu2/aihot-mcp-connect/issues)
